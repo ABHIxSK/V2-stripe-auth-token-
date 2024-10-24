@@ -1,36 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Card Token Generator</title>
-    <script src="https://js.stripe.com/v3/"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CC to Token Generator</title>
+  <script src="https://js.stripe.com/v3/"></script>
 </head>
 <body>
-    <h2>Enter Card Details</h2>
-    <form id="payment-form">
-        <div id="card-element"><!-- Stripe Element will go here --></div>
-        <button type="submit">Generate Token</button>
-    </form>
+  <h2>Upload CCs and Generate Tokens</h2>
+  <form id="cc-form">
+    <input type="file" id="cc-file" accept=".txt" /><br /><br />
+    <button type="button" id="generate-tokens">Generate Tokens</button>
+  </form>
 
-    <script>
-        // Initialize Stripe
-        const stripe = Stripe('your-publishable-key');  // Replace with your publishable key
-        const elements = stripe.elements();
-        const card = elements.create('card');
-        card.mount('#card-element');
+  <h3>Tokens Generated:</h3>
+  <textarea id="tokens-output" rows="10" cols="50" readonly></textarea><br />
+  <button id="download-tokens" style="display:none;">Download Tokens as .txt</button>
 
-        const form = document.getElementById('payment-form');
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const {token, error} = await stripe.createToken(card);
+  <script>
+    const stripe = Stripe('your-publishable-key'); // Replace with your publishable key
+
+    document.getElementById('generate-tokens').addEventListener('click', async () => {
+      const fileInput = document.getElementById('cc-file');
+      const outputArea = document.getElementById('tokens-output');
+      const downloadButton = document.getElementById('download-tokens');
+
+      if (!fileInput.files[0]) {
+        alert('Please upload a .txt file with CC details.');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      reader.onload = async function(event) {
+        const lines = event.target.result.split('\n');
+        const tokens = [];
+
+        for (const line of lines) {
+          const [number, exp_month, exp_year, cvc] = line.trim().split('|');
+
+          try {
+            const { token, error } = await stripe.createToken('card', {
+              number,
+              exp_month,
+              exp_year,
+              cvc
+            });
+
             if (error) {
-                alert(error.message);
+              tokens.push(`Error for ${number}: ${error.message}`);
             } else {
-                alert(`Token generated: ${token.id}`);
-                console.log(`Token: ${token.id}`);  // Copy this token into your .txt file
+              tokens.push(`${number}|${token.id}`);
             }
-        });
-    </script>
+          } catch (e) {
+            tokens.push(`Error for ${number}: ${e.message}`);
+          }
+        }
+
+        outputArea.value = tokens.join('\n');
+        downloadButton.style.display = 'inline-block';
+      };
+
+      reader.readAsText(file);
+
+      downloadButton.addEventListener('click', () => {
+        const blob = new Blob([outputArea.value], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'tokens.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  </script>
 </body>
 </html>
